@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+-   Preserve Undo/Redo history for non-synced custom core-data entities when Real-Time Collaboration is active ([#80722](https://github.com/WordPress/gutenberg/issues/80722)).
+
 ### Internal
 
 -   Split tsconfig into a build project and a default dev project so dev files are type checked without publishing their declarations. ([#81514](https://github.com/WordPress/gutenberg/pull/81514))

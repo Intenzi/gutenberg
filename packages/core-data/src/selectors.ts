@@ -1147,7 +1147,10 @@ export function getRedoEdit( state: State ): Optional< any > {
  */
 export function hasUndo( state: State ): boolean {
 	if ( getSyncManager()?.undoManager ) {
-		return state.syncUndoManagerState.hasUndo;
+		return (
+			state.syncUndoManagerState.hasUndo ||
+			Boolean( state.undoManager?.hasUndo() )
+		);
 	}
 	return getUndoManager( state ).hasUndo();
 }
@@ -1162,7 +1165,10 @@ export function hasUndo( state: State ): boolean {
  */
 export function hasRedo( state: State ): boolean {
 	if ( getSyncManager()?.undoManager ) {
-		return state.syncUndoManagerState.hasRedo;
+		return (
+			state.syncUndoManagerState.hasRedo ||
+			Boolean( state.undoManager?.hasRedo() )
+		);
 	}
 	return getUndoManager( state ).hasRedo();
 }
