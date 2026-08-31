@@ -2008,6 +2008,21 @@ class WP_Theme_JSON_Gutenberg {
 			return $processed_css;
 		}
 
+		// Normalize nested rules without '&' (e.g. `img { ... }` / `.child { ... }` to `& img { ... }`).
+		$css = preg_replace_callback(
+			'/(?:^|;|\})\s*([^&@}{;]+?)\s*\{/s',
+			static function ( $matches ) {
+				$inner_selector = trim( $matches[1] );
+				// Skip if empty or if it contains a colon (to avoid matching property declarations).
+				if ( empty( $inner_selector ) || str_contains( $inner_selector, ':' ) ) {
+					return $matches[0];
+				}
+				$prefix = str_starts_with( $matches[0], ';' ) ? ';' : ( str_starts_with( $matches[0], '}' ) ? '}' : '' );
+				return $prefix . ' & ' . $inner_selector . '{';
+			},
+			$css
+		);
+
 		// Split CSS nested rules.
 		$parts = explode( '&', $css );
 		foreach ( $parts as $part ) {
