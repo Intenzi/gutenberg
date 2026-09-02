@@ -1,6 +1,11 @@
 import { createSelector, createRegistrySelector } from '@wordpress/data';
 import type { ConnectionStatus } from '@wordpress/sync';
-import { getDefaultTemplateId, getEntityRecord, type State } from './selectors';
+import {
+	getDefaultTemplateId,
+	getEntityConfig,
+	getEntityRecord,
+	type State,
+} from './selectors';
 import { STORE_NAME } from './name';
 import { unlock } from './lock-unlock';
 import { getSyncManager } from './sync';
@@ -9,6 +14,10 @@ import logEntityDeprecation from './utils/log-entity-deprecation';
 type EntityRecordKey = string | number;
 
 const EMPTY_OBJECT = {};
+
+type UndoSource = 'sync' | 'local';
+const undoStack: UndoSource[] = [];
+const redoStack: UndoSource[] = [];
 
 /**
  * Returns the previous edit from the current undo offset
@@ -19,8 +28,97 @@ const EMPTY_OBJECT = {};
  * @return The undo manager.
  */
 export function getUndoManager( state: State ) {
-	// undoManager is undefined until the first sync-enabled entity is loaded.
-	return getSyncManager()?.undoManager ?? state.undoManager;
+	const syncUndoManager = getSyncManager()?.undoManager;
+	const localUndoManager = state.undoManager;
+
+	if ( ! syncUndoManager ) {
+		return localUndoManager;
+	}
+
+	return {
+		addRecord( record?: any, isCached = false ) {
+			const firstChange = record?.[ 0 ];
+			const kind = firstChange?.id?.kind;
+			const name = firstChange?.id?.name;
+			const entityConfig =
+				kind && name ? getEntityConfig( state, kind, name ) : null;
+			const isSynced = Boolean( entityConfig?.syncConfig );
+
+			if ( isSynced ) {
+				if ( ! isCached ) {
+					undoStack.push( 'sync' );
+					redoStack.length = 0;
+				}
+				syncUndoManager.addRecord?.( record, isCached );
+			} else {
+				if ( ! isCached ) {
+					undoStack.push( 'local' );
+					redoStack.length = 0;
+				}
+				localUndoManager.addRecord( record, isCached );
+			}
+		},
+
+		undo() {
+			while ( undoStack.length > 0 ) {
+				const target = undoStack.pop();
+				if ( target === 'sync' && syncUndoManager.hasUndo() ) {
+					redoStack.push( 'sync' );
+					return syncUndoManager.undo();
+				} else if ( target === 'local' && localUndoManager.hasUndo() ) {
+					redoStack.push( 'local' );
+					return localUndoManager.undo();
+				}
+			}
+
+			if ( localUndoManager.hasUndo() ) {
+				redoStack.push( 'local' );
+				return localUndoManager.undo();
+			} else if ( syncUndoManager.hasUndo() ) {
+				redoStack.push( 'sync' );
+				return syncUndoManager.undo();
+			}
+
+			return undefined;
+		},
+
+		redo() {
+			while ( redoStack.length > 0 ) {
+				const target = redoStack.pop();
+				if ( target === 'sync' && syncUndoManager.hasRedo() ) {
+					undoStack.push( 'sync' );
+					return syncUndoManager.redo();
+				} else if ( target === 'local' && localUndoManager.hasRedo() ) {
+					undoStack.push( 'local' );
+					return localUndoManager.redo();
+				}
+			}
+
+			if ( localUndoManager.hasRedo() ) {
+				undoStack.push( 'local' );
+				return localUndoManager.redo();
+			} else if ( syncUndoManager.hasRedo() ) {
+				undoStack.push( 'sync' );
+				return syncUndoManager.redo();
+			}
+
+			return undefined;
+		},
+
+		hasUndo() {
+			return (
+				Boolean( syncUndoManager.hasUndo() ) ||
+				Boolean( localUndoManager.hasUndo() )
+			);
+		},
+
+		hasRedo() {
+			return (
+				Boolean( syncUndoManager.hasRedo() ) ||
+				Boolean( localUndoManager.hasRedo() )
+			);
+		},
+	};
 }
 
 /**
