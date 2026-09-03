@@ -10,26 +10,40 @@ describe( 'getUndoManager', () => {
 		getSyncManager.mockReset();
 	} );
 
-	it( 'returns the sync undo manager when one is available', () => {
+	it( 'delegates to local undo manager for non-synced entity changes when sync undo manager is active', () => {
 		const syncUndoManager = {
 			addRecord: jest.fn(),
-			hasRedo: jest.fn(),
-			hasUndo: jest.fn(),
+			hasRedo: jest.fn( () => false ),
+			hasUndo: jest.fn( () => false ),
 			redo: jest.fn(),
 			undo: jest.fn(),
 		};
 		const fallbackUndoManager = {
 			addRecord: jest.fn(),
-			hasRedo: jest.fn(),
-			hasUndo: jest.fn(),
+			hasRedo: jest.fn( () => false ),
+			hasUndo: jest.fn( () => true ),
 			redo: jest.fn(),
-			undo: jest.fn(),
+			undo: jest.fn( () => [ { id: 'test' } ] ),
 		};
 		getSyncManager.mockReturnValue( {
 			undoManager: syncUndoManager,
 		} );
 
 		const state = {
+			entities: {
+				config: [
+					{
+						kind: 'plugin',
+						name: 'table',
+						// No syncConfig -> non-synced
+					},
+					{
+						kind: 'postType',
+						name: 'post',
+						syncConfig: {}, // Synced
+					},
+				],
+			},
 			undoManager: fallbackUndoManager,
 			syncUndoManagerState: {
 				hasRedo: false,
@@ -37,7 +51,39 @@ describe( 'getUndoManager', () => {
 			},
 		};
 
-		expect( getUndoManager( state ) ).toBe( syncUndoManager );
+		const manager = getUndoManager( state );
+
+		// Non-synced record addition
+		const nonSyncedRecord = [
+			{
+				id: { kind: 'plugin', name: 'table', recordId: 1 },
+				changes: { title: { from: 'A', to: 'B' } },
+			},
+		];
+		manager.addRecord( nonSyncedRecord );
+		expect( fallbackUndoManager.addRecord ).toHaveBeenCalledWith(
+			nonSyncedRecord,
+			false
+		);
+		expect( syncUndoManager.addRecord ).not.toHaveBeenCalled();
+
+		// Synced record addition
+		const syncedRecord = [
+			{
+				id: { kind: 'postType', name: 'post', recordId: 1 },
+				changes: { title: { from: 'X', to: 'Y' } },
+			},
+		];
+		manager.addRecord( syncedRecord );
+		expect( syncUndoManager.addRecord ).toHaveBeenCalledWith(
+			syncedRecord,
+			false
+		);
+
+		// Undo delegation
+		expect( manager.hasUndo() ).toBe( true );
+		expect( manager.undo() ).toEqual( [ { id: 'test' } ] );
+		expect( fallbackUndoManager.undo ).toHaveBeenCalled();
 	} );
 
 	it( 'returns the default undo manager when there is no sync undo manager', () => {

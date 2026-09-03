@@ -43,12 +43,38 @@ describe( 'hasUndo/hasRedo', () => {
 				hasRedo: true,
 				hasUndo: true,
 			},
+			undoManager: {
+				hasUndo: () => false,
+				hasRedo: () => false,
+			},
 		} );
 
 		expect( hasUndo( state ) ).toBe( true );
 		expect( hasRedo( state ) ).toBe( true );
 		expect( undoManager.hasUndo ).not.toHaveBeenCalled();
 		expect( undoManager.hasRedo ).not.toHaveBeenCalled();
+	} );
+
+	it( 'reads undo availability from local undoManager when sync undo manager has no undo levels but local manager does', () => {
+		const syncUndoManager = {
+			hasUndo: jest.fn( () => false ),
+			hasRedo: jest.fn( () => false ),
+		};
+		getSyncManager.mockReturnValue( { undoManager: syncUndoManager } );
+
+		const state = deepFreeze( {
+			syncUndoManagerState: {
+				hasRedo: false,
+				hasUndo: false,
+			},
+			undoManager: {
+				hasUndo: () => true,
+				hasRedo: () => true,
+			},
+		} );
+
+		expect( hasUndo( state ) ).toBe( true );
+		expect( hasRedo( state ) ).toBe( true );
 	} );
 
 	it( 'falls back to the default undo manager when no sync undo manager is available', () => {
